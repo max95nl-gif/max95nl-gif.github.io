@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BarFight</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d0d14;
+      --surface: rgba(255,255,255,0.045);
+      --border:  rgba(255,255,255,0.09);
+      --accent:  #4da6ff;
+      --accent2: #a56dff;
+      --text:    #e8eaf0;
+      --muted:   #5a5c78;
+      --gold:    #ffcc44;
+    }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw; height: 100vh;
+      overflow: hidden;
+    }
+
+    /* subtle ambient glow in the background */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 50% at 15% 35%, rgba(77,166,255,.05) 0%, transparent 65%),
+        radial-gradient(ellipse 55% 45% at 85% 70%, rgba(165,109,255,.05) 0%, transparent 65%);
+    }
+
+    /* ================================================================
+       START SCREEN
+    ================================================================ */
+    #start-screen {
+      position: fixed; inset: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+    }
+    .start-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 52px 60px;
+      text-align: center;
+      max-width: 500px; width: 90%;
+      backdrop-filter: blur(24px);
+      position: relative; z-index: 1;
+    }
+    .start-icon { font-size: 52px; margin-bottom: 14px; display: block; }
+    .start-card h1 {
+      font-size: 26px; font-weight: 700; letter-spacing: -.5px; margin-bottom: 14px;
+      background: linear-gradient(130deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .start-card p {
+      font-size: 14px; color: var(--muted); line-height: 1.7; margin-bottom: 28px;
+    }
+    .start-card p strong { color: #bbbdd4; -webkit-text-fill-color: #bbbdd4; }
+    .start-btn {
+      display: block; width: 100%; margin-bottom: 10px;
+      font-family: inherit; font-size: 15px; font-weight: 600;
+      border: none; border-radius: 14px; padding: 15px;
+      cursor: pointer; transition: opacity .2s, transform .1s;
+    }
+    .start-btn:hover  { opacity: .88; transform: scale(1.01); }
+    .start-btn:active { transform: scale(.985); }
+    .btn-primary { background: linear-gradient(130deg, var(--accent), var(--accent2)); color: #fff; }
+    .btn-secondary {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    }
+    .start-note { font-size: 12px; color: var(--muted); margin-top: 14px; }
+    #start-error {
+      margin-top: 12px; font-size: 13px; color: #ff7070; display: none;
+    }
+
+    /* ================================================================
+       MAIN APP
+    ================================================================ */
+    #app { position: fixed; inset: 0; display: none; }
+    #app.active { display: block; }
+
+    /* ================================================================
+       HUD  (fades on mouse idle via .visible class)
+    ================================================================ */
+    #hud {
+      position: fixed; inset: 0; pointer-events: none;
+      opacity: 0; transition: opacity .7s ease;
+      z-index: 10;
+    }
+    #hud.visible { opacity: 1; pointer-events: all; }
+
+    /* top-left: BPM + mode */
+    #bpm-block {
+      position: absolute; top: 22px; left: 26px;
+      display: flex; align-items: baseline; gap: 10px;
+    }
+    #bpm-value {
+      font-size: 34px; font-weight: 700; letter-spacing: -1.5px;
+    }
+    #mode-badge {
+      font-size: 11px; font-weight: 700; letter-spacing: .1em;
+      padding: 3px 10px; border-radius: 20px;
+    }
+    #mode-badge.auto   { background: rgba(80,220,140,.14); color: #50dc8c; }
+    #mode-badge.manual { background: rgba(255,196,68,.14);  color: #ffc444; }
+    #detect-note {
+      position: absolute; top: 60px; left: 28px;
+      font-size: 12px; color: var(--muted);
+    }
+    #bar-counter {
+      position: absolute; top: 80px; left: 28px;
+      font-size: 13px; color: var(--muted);
+    }
+
+    /* top-right: audio level */
+    #level-block {
+      position: absolute; top: 24px; right: 26px;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 5px;
+    }
+    #level-track {
+      width: 160px; height: 5px;
+      background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden;
+    }
+    #level-fill {
+      height: 100%; width: 0;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 3px; transition: width .05s linear;
+    }
+    .meter-lbl { font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+
+    /* top-center: tempo buttons */
+    #tempo-block {
+      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .tempo-lbl { font-size: 11px; color: var(--muted); letter-spacing: .1em; }
+    .tempo-btn {
+      font-family: inherit; font-size: 13px; font-weight: 600;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 6px 16px;
+      cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+    }
+    .tempo-btn:hover {
+      background: rgba(77,166,255,.15); border-color: var(--accent); color: var(--accent);
+    }
+
+    /* bottom: keyboard shortcuts */
+    #footer-help {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      font-size: 12px; color: var(--muted); white-space: nowrap;
+      opacity: 0; transition: opacity .7s ease; pointer-events: none; z-index: 10;
+    }
+    #footer-help.visible { opacity: 1; }
+    kbd {
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.11);
+      border-radius: 5px; padding: 1px 6px; font-family: inherit; font-size: 11px;
+    }
+
+    /* ================================================================
+       BEAT DOTS
+    ================================================================ */
+    #beat-dots {
+      position: fixed; top: 90px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 44px; align-items: center; z-index: 5;
+    }
+    .beat-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: rgba(255,255,255,.13);
+      transition: background .08s;
+    }
+    .beat-dot[data-beat="0"] { width: 18px; height: 18px; }
+    .beat-dot.lit { background: var(--text); }
+    .beat-dot[data-beat="0"].lit { background: var(--gold); }
+
+    @keyframes dotPop {
+      0%  { transform: scale(1);   box-shadow: 0 0 0 0   rgba(255,255,255,.55); }
+      35% { transform: scale(1.9); box-shadow: 0 0 0 9px rgba(255,255,255,0); }
+      100%{ transform: scale(1);   box-shadow: 0 0 0 0   rgba(255,255,255,0); }
+    }
+    @keyframes dotPop0 {
+      0%  { transform: scale(1);   box-shadow: 0 0 0 0    rgba(255,204,68,.7); }
+      35% { transform: scale(2.3); box-shadow: 0 0 0 14px rgba(255,204,68,0); }
+      100%{ transform: scale(1);   box-shadow: 0 0 0 0    rgba(255,204,68,0); }
+    }
+    .beat-dot.pop          { animation: dotPop  .22s ease-out forwards; }
+    .beat-dot[data-beat="0"].pop { animation: dotPop0 .26s ease-out forwards; }
+
+    /* ================================================================
+       WORD AREA
+    ================================================================ */
+    #word-area {
+      position: fixed; inset: 0; pointer-events: none; z-index: 4;
+    }
+
+    /* each word is an absolutely-positioned slot */
+    .word-slot {
+      position: absolute; left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      transition: top .45s cubic-bezier(.25,.46,.45,.94);
+    }
+    .word-slot.oldest { top: calc(50% - 130px); }
+    .word-slot.newest { top: calc(50% + 38px); }
+
+    .word-text {
+      font-weight: 700; letter-spacing: -1.5px; white-space: nowrap;
+      transition: font-size .45s ease, opacity .3s ease;
+      /* color is inherited from .word-slot inline style */
+    }
+    .word-slot.oldest .word-text {
+      font-size: clamp(60px, 9.5vw, 96px);
+      opacity: var(--word-alpha, 1);
+      text-shadow: 0 0 80px currentColor;
+    }
+    .word-slot.newest .word-text {
+      font-size: clamp(40px, 6.5vw, 64px);
+      opacity: .48;
+    }
+
+    .life-track {
+      margin: 10px auto 0;
+      height: 3px; border-radius: 2px;
+      background: rgba(255,255,255,.07); overflow: hidden;
+      transition: width .3s ease;
+    }
+    .word-slot.oldest .life-track { width: 200px; }
+    .word-slot.newest .life-track { width: 130px; }
+    .life-fill {
+      height: 100%; border-radius: 2px;
+      background: currentColor;
+      transition: width .12s linear;
+    }
+
+    /* ================================================================
+       IDLE / SPLASH MESSAGE
+    ================================================================ */
+    #idle-msg {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center; pointer-events: none; z-index: 3;
+      transition: opacity .4s ease;
+    }
+    #idle-msg p       { font-size: 20px; color: rgba(232,234,240,.6); }
+    #idle-msg .sub    { font-size: 14px; color: var(--muted); margin-top: 10px; }
+    #idle-msg.hidden  { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     START SCREEN
+============================================================ -->
+<div id="start-screen">
+  <div class="start-card">
+    <span class="start-icon">🎤</span>
+    <h1>BarFight</h1>
+    <p>
+      Oefen freestyle rappen op een beat.<br>
+      Elk 4e tel verschijnt een nieuw woord om op te rijmen.<br><br>
+      Klik <strong>Pc-audio delen</strong>, kies daarna
+      <strong>"Heel scherm"</strong> of <strong>"Venster"</strong> en vink
+      <strong>"Systeemgeluid delen"</strong> aan — dan luistert de app
+      naar wat je afspeelt.
+    </p>
+    <button class="start-btn btn-primary" id="btn-system">🔊 Pc-audio delen</button>
+    <button class="start-btn btn-secondary" id="btn-mic">🎙️ Microfoon gebruiken</button>
+    <div class="start-note">Werkt het best in Chrome of Edge op Windows</div>
+    <div id="start-error"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+============================================================ -->
+<div id="app">
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="bpm-block">
+      <span id="bpm-value">-- BPM</span>
+      <span id="mode-badge" class="auto">AUTO</span>
+    </div>
+    <div id="detect-note"></div>
+    <div id="bar-counter"></div>
+
+    <div id="level-block">
+      <div id="level-track"><div id="level-fill"></div></div>
+      <span class="meter-lbl">audio</span>
+    </div>
+
+    <div id="tempo-block">
+      <span class="tempo-lbl">tempo</span>
+      <button class="tempo-btn" id="btn-half">÷2</button>
+      <button class="tempo-btn" id="btn-double">×2</button>
+    </div>
+  </div>
+
+  <!-- Beat dots -->
+  <div id="beat-dots">
+    <div class="beat-dot" data-beat="0"></div>
+    <div class="beat-dot" data-beat="1"></div>
+    <div class="beat-dot" data-beat="2"></div>
+    <div class="beat-dot" data-beat="3"></div>
+  </div>
+
+  <!-- Words -->
+  <div id="word-area"></div>
+
+  <!-- Idle splash -->
+  <div id="idle-msg">
+    <p>Speel een nummer af op je pc…</p>
+    <p class="sub">of tik <kbd>SPATIE</kbd> om mee te tikken met de beat</p>
+  </div>
+
+  <!-- Footer shortcuts -->
+  <div id="footer-help">
+    <kbd>SPATIE</kbd> tik beat + reset &nbsp;·&nbsp;
+    <kbd>A</kbd> auto &nbsp;·&nbsp;
+    <kbd>M</kbd> handmatig &nbsp;·&nbsp;
+    <kbd>← →</kbd> timing &nbsp;·&nbsp;
+    <kbd>↑ ↓</kbd> BPM &nbsp;·&nbsp;
+    <kbd>[ ]</kbd> ÷2 / ×2
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ================================================================
+// Constants
+// ================================================================
+const BEATS_PER_BAR      = 4;
+const WORD_LIFETIME_BARS = 2;
+const AUTO_HALVE_ABOVE   = 100;
+const MAX_NUDGE          = 0.020;
+const MIN_BPM            = 60;
+const MAX_BPM            = 180;
+const TEMPO_PRIOR        = 110;
+const PRIOR_SIGMA        = 0.9;
+const OCTAVE_SUPPORT_W   = 3.0;
+const HISTORY_SEC        = 8;
+const MIN_SEC_ESTIMATE   = 3;
+const FFT_SIZE           = 2048;
+
+// ================================================================
+// Data
+// ================================================================
+const RHYME_GROUPS = [
+  ["maan","baan","gaan","staan","kraan","traan","laan","haan","waan"],
+  ["maar","naar","jaar","paar","klaar","haar","daar","waar","zwaar","gevaar","elkaar"],
+  ["nacht","kracht","lacht","wacht","zacht","pracht","vracht","klacht","macht","gedacht"],
+  ["fijn","mijn","zijn","pijn","lijn","wijn","schijn","venijn","konijn","ravijn","gordijn"],
+  ["groot","boot","noot","poot","sloot","stoot","rood","brood","dood","nood","schoot"],
+  ["tijd","strijd","altijd","spijt","kwijt","feit","geit","meid","bereid","wijd","nijd"],
+  ["bel","wel","snel","fel","spel","vel","hel","stel","tel","gezel"],
+  ["hand","land","brand","strand","rand","tand","verstand","kant","plant","want","krant","klant"],
+  ["schoon","woon","toon","loon","boon","kroon","gewoon","troon","persoon","vertoon"],
+  ["meer","zeer","weer","keer","leer","neer","heer","beer","sfeer","verkeer","beheer"],
+  ["drie","knie","genie","magie","fantasie","energie","melodie","harmonie","theorie","kopie"],
+  ["uur","muur","vuur","duur","zuur","huur","natuur","figuur","cultuur","azuur"],
+  ["licht","gedicht","gezicht","plicht","zicht","dicht","bericht","gewicht","sticht"],
+  ["bloed","goed","moed","voet","groet","stoet","vloed","zoet","ontmoet","behoed"],
+  ["kop","top","stop","klop","schop","drop","hop","strop","knop"],
+  ["man","kan","ban","plan","span","dan","van","began"],
+  ["hart","start","apart","zwart","smart","part","tart"],
+  ["geld","held","veld","meld","geweld"],
+];
+
+const PALETTE = [
+  '#ff6060','#5ac8ff','#7dff80','#ffcc44',
+  '#d46fff','#44ffcc','#ff88bb','#99aaff'
+];
+
+// ================================================================
+// Utilities
+// ================================================================
+function tsNow() { return performance.now() / 1000; }
+
+function median(arr) {
+  if (!arr.length) return 0;
+  const s = arr.slice().sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// ================================================================
+// RhymeWordGen
+// ================================================================
+class RhymeWordGen {
+  constructor() { this._init(); }
+
+  _init() {
+    this.lastGroup   = -1;
+    this.curGroup    = null;
+    this.pairFirst   = null;
+    this.recent      = [];
+  }
+
+  reset() { this._init(); }
+
+  _pick(group, avoid) {
+    let pool = group.filter(w => !this.recent.includes(w) && !avoid.includes(w));
+    if (!pool.length) pool = group.filter(w => !avoid.includes(w));
+    if (!pool.length) pool = [...group];
+    const word = pool[Math.floor(Math.random() * pool.length)];
+    this.recent.push(word);
+    if (this.recent.length > 14) this.recent.shift();
+    return word;
+  }
+
+  wordForBar(bar) {
+    const pairIdx = Math.floor(bar / 2);
+    const pos     = bar % 2;
+    const color   = PALETTE[pairIdx % PALETTE.length];
+    if (pos === 0) {
+      let idx = Math.floor(Math.random() * RHYME_GROUPS.length);
+      if (RHYME_GROUPS.length > 1)
+        while (idx === this.lastGroup) idx = Math.floor(Math.random() * RHYME_GROUPS.length);
+      this.lastGroup = idx;
+      this.curGroup  = RHYME_GROUPS[idx];
+      this.pairFirst = this._pick(this.curGroup, []);
+      return { text: this.pairFirst, pairIdx, color };
+    } else {
+      return { text: this._pick(this.curGroup, [this.pairFirst]), pairIdx, color };
+    }
+  }
+}
+
+// ================================================================
+// TempoEstimator  (port of bpm_detector.py)
+// ================================================================
+class TempoEstimator {
+  constructor(analyser, sampleRate) {
+    this.analyser   = analyser;
+    this.sampleRate = sampleRate;
+    const bins      = FFT_SIZE / 2 + 1;
+
+    // Frequency weighting: suppress hi-hats, emphasise kick/bass
+    this.bandW = new Float32Array(bins);
+    for (let k = 0; k < bins; k++) {
+      const f = k * sampleRate / FFT_SIZE;
+      this.bandW[k] = 1 / (1 + (f / 1500) ** 2);
+    }
+
+    this.fftBuf  = new Float32Array(bins);
+    this.tdBuf   = new Float32Array(FFT_SIZE);
+    this.prevFft = null;
+    this.onsetEnv = [];
+    this.onsetSr  = 60;   // calibrated dynamically
+    this.level    = 0;
+    this.updatedAt = 0;
+    this._frames  = 0;
+    this._t0      = tsNow();
+  }
+
+  processFrame() {
+    this.analyser.getFloatFrequencyData(this.fftBuf);
+    this.analyser.getFloatTimeDomainData(this.tdBuf);
+
+    // RMS level
+    let rms = 0;
+    for (let i = 0; i < this.tdBuf.length; i++) rms += this.tdBuf[i] ** 2;
+    rms = Math.sqrt(rms / this.tdBuf.length);
+    this.level = Math.max(rms, this.level * 0.85);
+
+    if (this.prevFft !== null) {
+      // Spectral flux: frequency-weighted positive differences
+      let flux = 0;
+      for (let k = 0; k < this.fftBuf.length; k++) {
+        const d = this.fftBuf[k] - this.prevFft[k];
+        if (d > 0) flux += d * this.bandW[k];
+      }
+      this.onsetEnv.push(flux);
+      this._frames++;
+
+      // Calibrate onset rate
+      const elapsed = tsNow() - this._t0;
+      if (elapsed > 1) this.onsetSr = this._frames / elapsed;
+
+      // Trim history window
+      const maxLen = Math.round(HISTORY_SEC * this.onsetSr);
+      while (this.onsetEnv.length > maxLen) this.onsetEnv.shift();
+    }
+
+    this.prevFft = this.fftBuf.slice();
+    this.updatedAt = tsNow();
+  }
+
+  estimate() {
+    const env = this.onsetEnv;
+    const sr  = this.onsetSr;
+    if (env.length < sr * MIN_SEC_ESTIMATE) return null;
+
+    const L    = env.length;
+    const mean = env.reduce((a, b) => a + b, 0) / L;
+    const e    = new Float64Array(L);
+    for (let i = 0; i < L; i++) e[i] = env[i] - mean;
+
+    const minLag = Math.max(1, Math.floor(60 * sr / MAX_BPM));
+    const maxLag = Math.min(L - 1, Math.floor(60 * sr / MIN_BPM));
+    if (maxLag <= minLag) return null;
+
+    // Normalised autocorrelation for lags 0 .. maxLag*5+1
+    const corrLen = Math.min(L, maxLag * 6 + 2);
+    const corr    = new Float64Array(corrLen);
+    let c0 = 0;
+    for (let i = 0; i < L; i++) c0 += e[i] * e[i];
+    if (c0 <= 0) return null;
+    for (let lag = 0; lag < corrLen; lag++) {
+      let s = 0;
+      for (let i = 0; i < L - lag; i++) s += e[i] * e[i + lag];
+      corr[lag] = Math.max(s / c0, 0);
+    }
+
+    // Harmonic-sum score + octave support + log-Gaussian prior
+    const hw = [1.0, 0.8, 0.6, 0.4, 0.2];
+    let bestScore = -Infinity, bestLag = minLag;
+
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let score = 0;
+
+      for (let ki = 0; ki < hw.length; ki++) {
+        const idx = lag * (ki + 1);
+        if (idx >= corrLen) break;
+        const cm = Math.max(
+          corr[Math.max(0, idx - 1)],
+          corr[idx],
+          corr[Math.min(corrLen - 1, idx + 1)]
+        );
+        score += hw[ki] * cm;
+      }
+
+      // Octave support (half-lag)
+      const h    = Math.floor(lag / 2);
+      const osup = Math.max(
+        corr[Math.max(0, h - 1)],
+        corr[h],
+        corr[Math.min(corrLen - 1, h + 1)]
+      );
+      score += OCTAVE_SUPPORT_W * osup;
+
+      // Log-Gaussian prior
+      const bpm = 60 * sr / lag;
+      score *= Math.exp(-0.5 * ((Math.log2(bpm / TEMPO_PRIOR) / PRIOR_SIGMA) ** 2));
+
+      if (score > bestScore) { bestScore = score; bestLag = lag; }
+    }
+
+    return 60 * sr / bestLag;
+  }
+}
+
+// ================================================================
+// BeatTracker  (port of BeatTracker class)
+// ================================================================
+class BeatTracker {
+  constructor(est) {
+    this.est         = est;
+    this.bpm         = null;
+    this.period      = null;
+    this.lastBeatTime = null;
+    this.level       = 0;
+    this.locked      = false;
+    this._hist       = [];
+    this._disagree   = 0;
+    this._lastCalc   = 0;
+  }
+
+  update() {
+    const t = tsNow();
+    if (t - this._lastCalc < 0.15) return;
+    this._lastCalc = t;
+
+    const raw = this.est.estimate();
+    if (raw === null) { this.level = this.est.level; return; }
+
+    // Fold raw into the current reference octave
+    let ref = this.bpm || (this._hist.length ? median(this._hist) : null);
+    let folded = raw;
+    if (ref) {
+      while (folded > ref * 1.4) folded /= 2;
+      while (folded < ref / 1.4) folded *= 2;
+    }
+    this._hist.push(folded);
+    if (this._hist.length > 10) this._hist.shift();
+
+    const recent = this._hist.slice(-8);
+    const med    = median(recent);
+    let committed;
+
+    if (!this.locked) {
+      committed = median(this._hist);
+      if (this._hist.length >= 6) {
+        const inliers = recent.filter(x => Math.abs(x - med) <= 0.04 * med).length;
+        if (inliers >= 6) { this.locked = true; committed = med; }
+      }
+    } else {
+      if (Math.abs(med - this.bpm) <= 0.05 * this.bpm) {
+        committed = 0.85 * this.bpm + 0.15 * med;
+        this._disagree = 0;
+      } else {
+        committed = this.bpm;
+        if (++this._disagree >= 24) {
+          this.locked = false; this._disagree = 0;
+          this._hist.length = 0; this._hist.push(raw);
+          committed = raw;
+        }
+      }
+    }
+
+    const period = 60 / committed;
+    const env    = this.est.onsetEnv;
+    const sr     = this.est.onsetSr;
+    const L      = env.length;
+    const pf     = sr * period;
+    let beatTime = null;
+
+    if (L >= 2 * pf) {
+      const mean = env.reduce((a, b) => a + b, 0) / L;
+      let re = 0, im = 0;
+      for (let n = 0; n < L; n++) {
+        const a = 2 * Math.PI * n / pf;
+        const ev = env[n] - mean;
+        re += ev * Math.cos(a);
+        im += ev * Math.sin(a);
+      }
+      const theta = -Math.atan2(im, re);
+      const frac  = ((theta / (2 * Math.PI)) % 1 + 1) % 1;
+      const mMax  = Math.floor((L - 1) / pf - frac);
+      const nLast = (mMax + frac) * pf;
+      beatTime = this.est.updatedAt - (L - 1 - nLast) / sr;
+    }
+
+    this.bpm    = committed;
+    this.period = period;
+    this.level  = this.est.level;
+    if (beatTime !== null) this.lastBeatTime = beatTime;
+  }
+
+  snapshot() {
+    return { bpm: this.bpm, period: this.period, lastBeatTime: this.lastBeatTime, level: this.level };
+  }
+}
+
+// ================================================================
+// Trainer
+// ================================================================
+class Trainer {
+  constructor(tracker) {
+    this.tracker     = tracker;
+    this.gen         = new RhymeWordGen();
+    this.started     = false;
+    this.mode        = 'auto';
+    this.manualBpm   = 120;
+    this.tempoMult   = 1;
+    this.effectiveBpm = null;
+    this.periodCur   = 0.5;
+    this.nextBeat    = 0;
+    this.beatPhase   = 0;
+    this.bar         = -1;
+    this.curBeat     = 0;   // beat-in-bar (0-3) of the most recent fire
+    this.lastBeatWall = 0;
+    this.beatCount   = 0;
+    this.words       = [];
+    this.taps        = [];
+  }
+
+  maybeStart(t) {
+    if (this.started) return;
+    const { period, lastBeatTime } = this.tracker.snapshot();
+    if (this.mode === 'auto' && lastBeatTime && period) {
+      const k = Math.ceil((t - lastBeatTime) / period);
+      this.nextBeat  = lastBeatTime + k * period;
+      this.periodCur = period;
+      this.beatPhase = 0;
+      this.started   = true;
+    }
+  }
+
+  _onDownbeat(bar, t) {
+    const w = this.gen.wordForBar(bar);
+    this.words.push({ ...w, bornBar: bar, bornTime: t });
+    this.words = this.words.filter(w => bar - w.bornBar < WORD_LIFETIME_BARS);
+  }
+
+  _fireBeat(t) {
+    if (this.beatPhase === 0) { this.bar++; this._onDownbeat(this.bar, t); }
+    this.curBeat    = this.beatPhase;
+    this.beatPhase  = (this.beatPhase + 1) % BEATS_PER_BAR;
+    this.lastBeatWall = t;
+    this.beatCount++;
+  }
+
+  update(t) {
+    this.maybeStart(t);
+    if (!this.started) return;
+
+    const { bpm, period, lastBeatTime } = this.tracker.snapshot();
+    let countBpm;
+    if (this.mode === 'manual') {
+      countBpm = this.manualBpm;
+    } else if (bpm) {
+      countBpm = bpm > AUTO_HALVE_ABOVE ? bpm * 0.5 : bpm;
+    }
+    if (countBpm) {
+      this.effectiveBpm = countBpm * this.tempoMult;
+      this.periodCur    = 60 / this.effectiveBpm;
+    }
+
+    let guard = 0;
+    while (t >= this.nextBeat && guard++ < 8) {
+      this._fireBeat(this.nextBeat);
+      this.nextBeat += this.periodCur;
+      if (this.mode === 'auto' && lastBeatTime) {
+        const nearest = lastBeatTime +
+          Math.round((this.nextBeat - lastBeatTime) / this.periodCur) * this.periodCur;
+        const err = nearest - this.nextBeat;
+        this.nextBeat += Math.max(-MAX_NUDGE, Math.min(MAX_NUDGE, err));
+      }
+    }
+  }
+
+  tap(t) {
+    this.taps.push(t);
+    while (this.taps.length >= 2 &&
+           this.taps[this.taps.length - 1] - this.taps[this.taps.length - 2] > 2.5)
+      this.taps.shift();
+    if (this.taps.length >= 2) {
+      const ivs = [];
+      for (let i = 1; i < this.taps.length; i++) ivs.push(this.taps[i] - this.taps[i - 1]);
+      const per = median(ivs);
+      if (per >= 0.25 && per <= 1.2) { this.manualBpm = 60 / per; this.mode = 'manual'; }
+    }
+    this.nextBeat  = t;
+    this.beatPhase = 0;
+    this.periodCur = this.mode === 'manual'
+      ? 60 / this.manualBpm
+      : (this.tracker.snapshot().period || this.periodCur);
+    this.started = true;
+  }
+
+  setAuto()   { this.mode = 'auto'; }
+  setManual() {
+    if (this.effectiveBpm) this.manualBpm = this.effectiveBpm / this.tempoMult;
+    this.mode = 'manual';
+  }
+  tempoDouble() { this.tempoMult = Math.min(4,    this.tempoMult * 2); }
+  tempoHalve()  { this.tempoMult = Math.max(0.25, this.tempoMult / 2); }
+  nudge(s)      { this.nextBeat += s; }
+  adjustBpm(d)  {
+    const { bpm } = this.tracker.snapshot();
+    this.manualBpm = Math.max(40, Math.min(220,
+      (this.mode === 'manual' ? this.manualBpm : (bpm || 120)) + d));
+    this.mode = 'manual';
+  }
+
+  resetWords() {
+    const t = tsNow();
+    this.gen.reset();
+    this.words = [];
+    this._onDownbeat(0, t);
+    this._onDownbeat(1, t);
+    this.bar       = 1;
+    this.beatPhase = 1;
+    this.nextBeat  = t + this.periodCur;
+  }
+}
+
+// ================================================================
+// Audio setup
+// ================================================================
+let audioCtx, analyser, estimator, tracker, trainer;
+
+async function startAudio(useDisplay) {
+  const errEl = document.getElementById('start-error');
+  errEl.style.display = 'none';
+  try {
+    let stream;
+    if (useDisplay) {
+      // Video is required to get the "Share system audio" checkbox in Chrome/Edge
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      stream.getVideoTracks().forEach(t => t.stop());
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser  = audioCtx.createAnalyser();
+    analyser.fftSize               = FFT_SIZE;
+    analyser.smoothingTimeConstant = 0; // raw frames — same as Python
+    src.connect(analyser);
+    // deliberately NOT connected to destination (no echo)
+
+    estimator = new TempoEstimator(analyser, audioCtx.sampleRate);
+    tracker   = new BeatTracker(estimator);
+    trainer   = new Trainer(tracker);
+
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+    requestAnimationFrame(loop);
+  } catch (err) {
+    errEl.textContent = err.message || 'Kon geen toegang tot audio krijgen.';
+    errEl.style.display = 'block';
+  }
+}
+
+document.getElementById('btn-system').addEventListener('click', () => startAudio(true));
+document.getElementById('btn-mic').addEventListener('click',    () => startAudio(false));
+
+// ================================================================
+// HUD fade  (CSS handles the actual opacity transition)
+// ================================================================
+const elHud    = document.getElementById('hud');
+const elFooter = document.getElementById('footer-help');
+let hudTimer;
+function activateHud() {
+  elHud.classList.add('visible');
+  elFooter.classList.add('visible');
+  clearTimeout(hudTimer);
+  hudTimer = setTimeout(() => {
+    elHud.classList.remove('visible');
+    elFooter.classList.remove('visible');
+  }, 2000);
+}
+document.addEventListener('mousemove',  activateHud);
+document.addEventListener('mousedown',  activateHud);
+document.addEventListener('touchstart', activateHud, { passive: true });
+
+// ================================================================
+// HUD DOM refs
+// ================================================================
+const elBpmValue  = document.getElementById('bpm-value');
+const elModeBadge = document.getElementById('mode-badge');
+const elDetNote   = document.getElementById('detect-note');
+const elBarCtr    = document.getElementById('bar-counter');
+const elLevelFill = document.getElementById('level-fill');
+const elWordArea  = document.getElementById('word-area');
+const elIdleMsg   = document.getElementById('idle-msg');
+const beatDots    = document.querySelectorAll('.beat-dot');
+
+// ================================================================
+// Word DOM management
+// ================================================================
+const wordEls = {}; // bornBar → { el, lifeFill, isOldest }
+
+function syncWordDom() {
+  // Remove stale elements
+  for (const key of Object.keys(wordEls)) {
+    if (!trainer.words.find(w => w.bornBar === +key)) {
+      wordEls[key].el.remove();
+      delete wordEls[key];
+    }
+  }
+
+  const sorted = [...trainer.words].sort((a, b) => a.bornBar - b.bornBar);
+  sorted.forEach((w, i) => {
+    const isOldest = i === 0;
+    const key = String(w.bornBar);
+
+    if (!wordEls[key]) {
+      // Create new word element
+      const el = document.createElement('div');
+      el.className = `word-slot ${isOldest ? 'oldest' : 'newest'}`;
+      el.style.color = w.color;
+      el.innerHTML = `
+        <div class="word-text">${w.text}</div>
+        <div class="life-track"><div class="life-fill"></div></div>
+      `;
+      elWordArea.appendChild(el);
+
+      // Entry animation via Web Animations API (doesn't conflict with CSS transitions)
+      el.animate(
+        [
+          { opacity: 0, transform: 'translateX(-50%) translateY(28px) scale(0.84)' },
+          { opacity: 1, transform: 'translateX(-50%) translateY(0)    scale(1)'    },
+        ],
+        { duration: 320, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'none' }
+      );
+
+      wordEls[key] = { el, lifeFill: el.querySelector('.life-fill'), isOldest };
+    } else {
+      // Update role if it changed (newest → oldest)
+      const entry = wordEls[key];
+      if (entry.isOldest !== isOldest) {
+        entry.el.classList.toggle('oldest', isOldest);
+        entry.el.classList.toggle('newest', !isOldest);
+        entry.isOldest = isOldest;
+      }
+    }
+  });
+}
+
+function updateLifebars(t) {
+  for (const [key, entry] of Object.entries(wordEls)) {
+    const w = trainer.words.find(w => w.bornBar === +key);
+    if (!w) continue;
+    const life = Math.max(0, Math.min(1,
+      (t - w.bornTime) / (WORD_LIFETIME_BARS * BEATS_PER_BAR * Math.max(trainer.periodCur, 1e-3))
+    ));
+    entry.lifeFill.style.width = `${Math.round((1 - life) * 100)}%`;
+    if (entry.isOldest) {
+      // Fade word slightly near end of its lifetime
+      entry.el.style.setProperty('--word-alpha', (1 - 0.4 * life).toFixed(3));
+    }
+  }
+}
+
+// ================================================================
+// Beat dot animation
+// ================================================================
+let prevBeatCount = 0;
+
+function pulseBeatDot(beat) {
+  beatDots.forEach(d => d.classList.remove('lit'));
+  const dot = beatDots[beat];
+  dot.classList.add('lit');
+  // Re-trigger pop animation
+  dot.classList.remove('pop');
+  void dot.offsetWidth;
+  dot.classList.add('pop');
+}
+
+// ================================================================
+// Main loop
+// ================================================================
+function loop() {
+  requestAnimationFrame(loop);
+  const t = tsNow();
+
+  estimator.processFrame();
+  tracker.update();
+  trainer.update(t);
+
+  // Detect new beat fires
+  if (trainer.beatCount > prevBeatCount) {
+    pulseBeatDot(trainer.curBeat);
+    prevBeatCount = trainer.beatCount;
+  }
+
+  // Words
+  if (trainer.started) {
+    elIdleMsg.classList.add('hidden');
+    syncWordDom();
+    updateLifebars(t);
+  } else {
+    elIdleMsg.classList.remove('hidden');
+  }
+
+  // HUD values (only update DOM — opacity is CSS)
+  const { bpm, level } = tracker.snapshot();
+  const eff = trainer.effectiveBpm;
+  elBpmValue.textContent = eff ? `${Math.round(eff)} BPM` : '-- BPM';
+
+  const isAuto = trainer.mode === 'auto';
+  elModeBadge.className = isAuto ? 'auto' : 'manual';
+  elModeBadge.textContent = isAuto ? 'AUTO' : 'MANUEEL';
+
+  const det = trainer.mode === 'manual' ? trainer.manualBpm : bpm;
+  const notes = [];
+  if (det) notes.push(`detectie ${Math.round(det)}`);
+  if (Math.abs(trainer.tempoMult - 1) > 0.001) notes.push(`×${trainer.tempoMult}`);
+  elDetNote.textContent  = notes.join('   ');
+  elBarCtr.textContent   = trainer.started ? `maat ${Math.max(trainer.bar, 0) + 1}` : '';
+  elLevelFill.style.width = `${Math.min(100, Math.round(level * 600))}%`;
+}
+
+// ================================================================
+// Input
+// ================================================================
+document.addEventListener('keydown', e => {
+  if (!trainer) return;
+  const t = tsNow();
+  switch (e.code) {
+    case 'Space':        e.preventDefault(); trainer.tap(t); trainer.resetWords(); break;
+    case 'KeyA':         trainer.setAuto();     break;
+    case 'KeyM':         trainer.setManual();   break;
+    case 'ArrowLeft':    trainer.nudge(-0.02);  break;
+    case 'ArrowRight':   trainer.nudge(+0.02);  break;
+    case 'ArrowUp':      trainer.adjustBpm(+1); break;
+    case 'ArrowDown':    trainer.adjustBpm(-1); break;
+    case 'BracketLeft':  trainer.tempoHalve();  break;
+    case 'BracketRight': trainer.tempoDouble(); break;
+  }
+});
+
+document.getElementById('btn-half').addEventListener('click',   () => trainer?.tempoHalve());
+document.getElementById('btn-double').addEventListener('click', () => trainer?.tempoDouble());
+</script>
+</body>
+</html>
