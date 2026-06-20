@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BarFight – BPM Diagnostic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d0d14;
+      --surface: rgba(255,255,255,0.045);
+      --border:  rgba(255,255,255,0.09);
+      --accent:  #4da6ff;
+      --accent2: #a56dff;
+      --text:    #e8eaf0;
+      --muted:   #5a5c78;
+      --green:   #50dc8c;
+      --red:     #ff6060;
+      --gold:    #ffcc44;
+    }
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; padding: 40px 24px;
+      max-width: 960px; margin: 0 auto;
+    }
+    h1 {
+      font-size: 22px; font-weight: 700; letter-spacing: -.5px;
+      background: linear-gradient(130deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin-bottom: 28px;
+    }
+    h2 { font-size: 13px; font-weight: 600; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 32px; margin-bottom: 24px;
+    }
+    .panel.hidden { display: none; }
+
+    /* Upload row */
+    .upload-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 12px; color: var(--muted); letter-spacing: .06em; }
+    input[type="file"] {
+      font-family: inherit; font-size: 13px; color: var(--text);
+      background: rgba(255,255,255,.06); border: 1px solid var(--border);
+      border-radius: 10px; padding: 9px 14px; cursor: pointer;
+    }
+    input[type="number"] {
+      font-family: inherit; font-size: 15px; font-weight: 600; color: var(--text);
+      background: rgba(255,255,255,.06); border: 1px solid var(--border);
+      border-radius: 10px; padding: 9px 14px; width: 120px; outline: none;
+    }
+    input[type="number"]:focus { border-color: var(--accent); }
+    #btn-analyze {
+      font-family: inherit; font-size: 14px; font-weight: 700;
+      background: linear-gradient(130deg, var(--accent), var(--accent2));
+      color: #fff; border: none; border-radius: 12px; padding: 11px 28px;
+      cursor: pointer; transition: opacity .2s, transform .1s;
+    }
+    #btn-analyze:hover  { opacity: .88; transform: scale(1.01); }
+    #btn-analyze:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+    #status { font-size: 13px; color: var(--muted); min-height: 20px; }
+
+    /* Settings grid */
+    .settings-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px; margin-top: 20px; padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .setting { display: flex; flex-direction: column; gap: 5px; }
+    .setting label { font-size: 11px; color: var(--muted); letter-spacing: .06em; }
+    .setting input[type="number"] { font-size: 14px; width: 100%; padding: 7px 12px; }
+    .setting .hint { font-size: 11px; color: var(--muted); opacity: .6; }
+    .settings-title {
+      font-size: 11px; font-weight: 700; letter-spacing: .12em;
+      color: var(--muted); text-transform: uppercase; margin-top: 20px; padding-top: 20px;
+      border-top: 1px solid var(--border); cursor: pointer; user-select: none;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .settings-title::after { content: '▸'; transition: transform .2s; }
+    .settings-title.open::after { transform: rotate(90deg); }
+    #settings-grid { display: none; }
+    #settings-grid.open { display: grid; }
+
+    /* Results */
+    .verdict {
+      display: flex; align-items: baseline; gap: 20px; margin-bottom: 28px; flex-wrap: wrap;
+    }
+    .verdict-bpm { font-size: 52px; font-weight: 700; letter-spacing: -2px; line-height: 1; }
+    .verdict-detail { font-size: 14px; color: var(--muted); line-height: 1.8; }
+    .verdict-detail strong { color: var(--text); }
+    .badge { font-size: 13px; font-weight: 700; letter-spacing: .08em; padding: 4px 14px; border-radius: 20px; }
+    .badge.pass  { background: rgba(80,220,140,.14); color: var(--green); }
+    .badge.fail  { background: rgba(255,96,96,.14);  color: var(--red); }
+    .badge.close { background: rgba(255,204,68,.14);  color: var(--gold); }
+
+    /* Candidates table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: right; padding: 6px 10px; color: var(--muted);
+      font-weight: 600; font-size: 11px; letter-spacing: .06em;
+      border-bottom: 1px solid var(--border);
+    }
+    th:first-child { text-align: left; }
+    td {
+      text-align: right; padding: 7px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.035);
+      font-variant-numeric: tabular-nums;
+    }
+    td:first-child { text-align: left; color: var(--muted); }
+    tr.winner td          { color: var(--accent); }
+    tr.winner td:first-child { color: var(--accent); }
+    tr.target td          { color: var(--green); }
+    tr.target td:first-child { color: var(--green); }
+    tr.winner td:first-child::before { content: '→ '; }
+    tr.target td:first-child::before { content: '✓ '; }
+    .bar-cell { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .mini-bar { height: 8px; border-radius: 4px; background: var(--accent); opacity: .5; min-width: 2px; }
+
+    /* History */
+    #history-table th, #history-table td { font-size: 12px; padding: 6px 10px; }
+    #history-table td.pass  { color: var(--green); }
+    #history-table td.fail  { color: var(--red); }
+    #history-table td.close { color: var(--gold); }
+
+    .note {
+      font-size: 12px; color: var(--muted);
+      background: rgba(255,255,255,.03); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 14px; margin-top: 16px; line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+
+<h1>BarFight – BPM Diagnostic</h1>
+
+<!-- Upload + settings -->
+<div class="panel" id="upload-panel">
+  <h2>Analyze audio file</h2>
+  <div class="upload-row">
+    <div class="field">
+      <label>Audio file</label>
+      <input type="file" id="file-input" accept="audio/*,video/*">
+    </div>
+    <div class="field">
+      <label>Expected BPM</label>
+      <input type="number" id="expected-bpm" placeholder="e.g. 90" min="40" max="220" step="0.5">
+    </div>
+    <button id="btn-analyze" disabled>Analyze</button>
+  </div>
+  <div id="status">Choose an audio file to get started.</div>
+
+  <!-- Tuning constants -->
+  <div class="settings-title" id="settings-toggle">Algorithm constants</div>
+  <div class="settings-grid" id="settings-grid">
+    <div class="setting">
+      <label>Freq cutoff (Hz)</label>
+      <input type="number" id="s-freqcut" value="1500" min="200" max="8000" step="100">
+      <span class="hint">Hi-hat suppression. Lower = ignore more highs.</span>
+    </div>
+    <div class="setting">
+      <label>Octave support weight</label>
+      <input type="number" id="s-octave" value="3.0" min="0" max="10" step="0.5">
+      <span class="hint">Reward for half-period structure. Default 3.0.</span>
+    </div>
+    <div class="setting">
+      <label>Prior centre (BPM)</label>
+      <input type="number" id="s-prior" value="110" min="60" max="180" step="5">
+      <span class="hint">Raw BPM the prior peaks at. Default 110.</span>
+    </div>
+    <div class="setting">
+      <label>Prior width (σ octaves)</label>
+      <input type="number" id="s-sigma" value="0.9" min="0.2" max="3" step="0.1">
+      <span class="hint">Wider = flatter prior, less BPM steering.</span>
+    </div>
+  </div>
+
+  <div class="note">
+    Uses the full onset envelope from the entire file (no rolling window) for maximum autocorrelation quality.<br>
+    Change constants above and re-analyze to tune the algorithm for specific song types.
+  </div>
+</div>
+
+<!-- Results -->
+<div class="panel hidden" id="results-panel">
+  <h2>Result</h2>
+  <div class="verdict">
+    <div class="verdict-bpm" id="v-detected">--</div>
+    <div class="verdict-detail" id="v-detail"></div>
+    <div class="badge" id="v-badge"></div>
+  </div>
+  <table id="candidates-table">
+    <thead>
+      <tr>
+        <th>BPM</th><th>Corr</th><th>Harm sum</th><th>Oct sup</th><th>Prior</th><th>Score</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="candidates-body"></tbody>
+  </table>
+</div>
+
+<!-- History -->
+<div class="panel hidden" id="history-panel">
+  <h2>History</h2>
+  <table id="history-table">
+    <thead>
+      <tr>
+        <th style="text-align:left">File</th>
+        <th>Expected</th><th>Detected</th><th>Effective</th><th>Error</th><th>Result</th>
+      </tr>
+    </thead>
+    <tbody id="history-body"></tbody>
+  </table>
+</div>
+
+<script>
+'use strict';
+
+// ================================================================
+// Fixed constants (mirror production)
+// ================================================================
+const FFT_SIZE         = 2048;
+const HOP              = 735;   // 44100/60 — matches ~60 fps rAF onset rate
+const MIN_BPM          = 60;
+const MAX_BPM          = 180;
+const AUTO_HALVE_ABOVE = 100;
+
+// ================================================================
+// Cooley-Tukey FFT (in-place, N must be power of 2)
+// ================================================================
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const half = len >> 1;
+    const ang  = -Math.PI / half;
+    const wRe  = Math.cos(ang), wIm = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let uRe = 1, uIm = 0;
+      for (let j = 0; j < half; j++) {
+        const a = i + j, b = i + j + half;
+        const vRe = re[b]*uRe - im[b]*uIm, vIm = re[b]*uIm + im[b]*uRe;
+        re[b] = re[a]-vRe; im[b] = im[a]-vIm; re[a] += vRe; im[a] += vIm;
+        const nr = uRe*wRe - uIm*wIm; uIm = uRe*wIm + uIm*wRe; uRe = nr;
+      }
+    }
+  }
+}
+
+// ================================================================
+// Build onset envelope — uses ENTIRE file (no rolling window).
+// freqCutoff: the 1500 Hz hi-hat suppression cutoff.
+// ================================================================
+function buildOnsetEnv(monoData, sampleRate, freqCutoff) {
+  const bins    = FFT_SIZE / 2 + 1;
+  const onsetSr = sampleRate / HOP;
+
+  const hann = new Float32Array(FFT_SIZE);
+  for (let i = 0; i < FFT_SIZE; i++)
+    hann[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
+
+  const bandW = new Float32Array(bins);
+  for (let k = 0; k < bins; k++) {
+    const f = k * sampleRate / FFT_SIZE;
+    bandW[k] = 1 / (1 + (f / freqCutoff) ** 2);
+  }
+
+  const re      = new Float64Array(FFT_SIZE);
+  const im      = new Float64Array(FFT_SIZE);
+  const linBuf  = new Float32Array(bins);
+  let   prevFft = null;
+  const env     = [];   // grows to full file length — no trimming
+
+  const nFrames = Math.floor((monoData.length - FFT_SIZE) / HOP) + 1;
+
+  for (let fr = 0; fr < nFrames; fr++) {
+    const start = fr * HOP;
+    for (let i = 0; i < FFT_SIZE; i++) {
+      re[i] = (start + i < monoData.length ? monoData[start + i] : 0) * hann[i];
+      im[i] = 0;
+    }
+    fft(re, im);
+    for (let k = 0; k < bins; k++)
+      linBuf[k] = Math.sqrt(re[k]*re[k] + im[k]*im[k]);
+
+    if (prevFft !== null) {
+      let flux = 0;
+      for (let k = 0; k < bins; k++) {
+        const d = linBuf[k] - prevFft[k];
+        if (d > 0) flux += d * bandW[k];
+      }
+      env.push(flux);
+    }
+    prevFft = linBuf.slice();
+  }
+  return { env, onsetSr };
+}
+
+// ================================================================
+// Diagnose: autocorrelation + full candidate breakdown.
+// Uses fractional lag stepping (0.25) for ~4x BPM resolution.
+// ================================================================
+function diagnose(env, sr, { octaveW, priorSigma, tempoPrior }) {
+  const L = env.length;
+  if (L < sr * 3) return null;
+
+  const mean = env.reduce((a, b) => a + b, 0) / L;
+  const e = new Float64Array(L);
+  for (let i = 0; i < L; i++) e[i] = env[i] - mean;
+
+  const minLag  = Math.max(1, Math.floor(60 * sr / MAX_BPM));
+  const maxLag  = Math.min(L - 1, Math.floor(60 * sr / MIN_BPM));
+  if (maxLag <= minLag) return null;
+
+  const corrLen = Math.min(L, maxLag * 6 + 2);
+  const corr    = new Float64Array(corrLen);
+  let c0 = 0;
+  for (let i = 0; i < L; i++) c0 += e[i]*e[i];
+  if (c0 <= 0) return null;
+  for (let lag = 0; lag < corrLen; lag++) {
+    let s = 0;
+    for (let i = 0; i < L - lag; i++) s += e[i]*e[i+lag];
+    corr[lag] = Math.max(s/c0, 0);
+  }
+
+  const corrAt = l => {
+    const i = Math.floor(l);
+    if (i < 0 || i >= corrLen) return 0;
+    if (i + 1 >= corrLen) return corr[i];
+    const f = l - i;
+    return corr[i]*(1-f) + corr[i+1]*f;
+  };
+
+  const hw = [1.0, 0.8, 0.6, 0.4, 0.2];
+  const candidates = [];
+
+  for (let lag = minLag; lag <= maxLag; lag += 0.25) {
+    let hsum = 0;
+    for (let ki = 0; ki < hw.length; ki++) {
+      const idx = lag*(ki+1);
+      if (idx >= corrLen) break;
+      hsum += hw[ki] * Math.max(corrAt(idx-1), corrAt(idx), corrAt(idx+1));
+    }
+    const h    = lag / 2;
+    const osup = Math.max(corrAt(h-1), corrAt(h), corrAt(h+1));
+    const bpm   = 60 * sr / lag;
+    const prior = Math.exp(-0.5 * ((Math.log2(bpm/tempoPrior)/priorSigma)**2));
+    const score = (hsum + octaveW*osup) * prior;
+    candidates.push({ bpm, corr: corrAt(lag), hsum, osup, prior, score });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const best      = candidates[0];
+  const effective = fold(best.bpm);
+
+  return { bpm: best.bpm, effective, candidates: candidates.slice(0, 20) };
+}
+
+// ================================================================
+// UI
+// ================================================================
+const fileInput   = document.getElementById('file-input');
+const bpmInput    = document.getElementById('expected-bpm');
+const btnAnalyze  = document.getElementById('btn-analyze');
+const statusEl    = document.getElementById('status');
+const resultsEl   = document.getElementById('results-panel');
+const historyEl   = document.getElementById('history-panel');
+
+// Settings toggle
+document.getElementById('settings-toggle').addEventListener('click', function() {
+  this.classList.toggle('open');
+  document.getElementById('settings-grid').classList.toggle('open');
+});
+
+function getSettings() {
+  return {
+    freqCutoff:  parseFloat(document.getElementById('s-freqcut').value)  || 1500,
+    octaveW:     parseFloat(document.getElementById('s-octave').value)   || 3.0,
+    tempoPrior:  parseFloat(document.getElementById('s-prior').value)    || 110,
+    priorSigma:  parseFloat(document.getElementById('s-sigma').value)    || 0.9,
+  };
+}
+
+fileInput.addEventListener('change', () => {
+  btnAnalyze.disabled = !fileInput.files.length;
+  if (fileInput.files.length) statusEl.textContent = `Ready: ${fileInput.files[0].name}`;
+});
+
+btnAnalyze.addEventListener('click', runAnalysis);
+
+async function runAnalysis() {
+  const file     = fileInput.files[0];
+  const expected = parseFloat(bpmInput.value) || null;
+  if (!file) return;
+
+  btnAnalyze.disabled = true;
+  statusEl.textContent = 'Decoding audio…';
+
+  try {
+    const settings  = getSettings();
+    const arrayBuf  = await file.arrayBuffer();
+    const audioCtx  = new AudioContext();
+    const audioBuf  = await audioCtx.decodeAudioData(arrayBuf);
+    audioCtx.close();
+
+    statusEl.textContent = `Computing onset envelope for ${audioBuf.duration.toFixed(0)} s of audio…`;
+    const sr    = audioBuf.sampleRate;
+    const left  = audioBuf.getChannelData(0);
+    const right = audioBuf.numberOfChannels > 1 ? audioBuf.getChannelData(1) : left;
+    const mono  = new Float32Array(audioBuf.length);
+    for (let i = 0; i < audioBuf.length; i++) mono[i] = (left[i]+right[i])/2;
+
+    await new Promise(r => setTimeout(r, 0));
+    const { env, onsetSr } = buildOnsetEnv(mono, sr, settings.freqCutoff);
+
+    statusEl.textContent = 'Running BPM estimation…';
+    await new Promise(r => setTimeout(r, 0));
+    const result = diagnose(env, onsetSr, settings);
+
+    if (!result) {
+      statusEl.textContent = 'Not enough audio data.';
+      btnAnalyze.disabled = false;
+      return;
+    }
+
+    showResult(result, expected, file.name, audioBuf.duration, settings);
+    statusEl.textContent =
+      `Done — full ${audioBuf.duration.toFixed(1)} s used · ` +
+      `${env.length} onset frames · onset rate ${onsetSr.toFixed(1)} Hz`;
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+  btnAnalyze.disabled = false;
+}
+
+function fold(bpm) { let b = bpm; while (b > AUTO_HALVE_ABOVE) b /= 2; return b; }
+
+function showResult(result, expected, filename, duration, settings) {
+  const { bpm, effective, candidates } = result;
+  const maxScore = candidates[0].score;
+
+  document.getElementById('v-detected').textContent = `${effective.toFixed(1)} BPM`;
+
+  let detail = `Raw: <strong>${bpm.toFixed(1)}</strong>`;
+  if (bpm > AUTO_HALVE_ABOVE) detail += ` → ÷2 = <strong>${effective.toFixed(1)}</strong>`;
+  detail += `<br>Analyzed: <strong>${duration.toFixed(0)} s</strong>`;
+  if (settings.freqCutoff !== 1500 || settings.octaveW !== 3.0 ||
+      settings.tempoPrior !== 110 || settings.priorSigma !== 0.9) {
+    detail += `<br><span style="color:var(--gold);font-size:11px">` +
+      `cutoff=${settings.freqCutoff} oct=${settings.octaveW} prior=${settings.tempoPrior} σ=${settings.priorSigma}</span>`;
+  }
+  if (expected) {
+    const err = Math.abs(effective - expected) / expected * 100;
+    detail += `<br>Expected: <strong>${expected}</strong>  error: <strong>${err.toFixed(1)}%</strong>`;
+  }
+  document.getElementById('v-detail').innerHTML = detail;
+
+  const badge = document.getElementById('v-badge');
+  if (expected) {
+    const err = Math.abs(effective - expected) / expected * 100;
+    if (err <= 4)       { badge.textContent = 'PASS';  badge.className = 'badge pass'; }
+    else if (err <= 10) { badge.textContent = 'CLOSE'; badge.className = 'badge close'; }
+    else                { badge.textContent = 'FAIL';  badge.className = 'badge fail'; }
+  } else { badge.textContent = ''; badge.className = 'badge'; }
+
+  const tbody = document.getElementById('candidates-body');
+  tbody.innerHTML = '';
+  candidates.forEach((c, i) => {
+    const effC    = fold(c.bpm);
+    const isWinner = i === 0;
+    const isTarget = expected &&
+      (Math.abs(effC - expected) / expected < 0.04 ||
+       Math.abs(c.bpm - expected) / expected < 0.04);
+
+    const tr = document.createElement('tr');
+    if (isWinner) tr.className = 'winner';
+    else if (isTarget) tr.className = 'target';
+
+    const barW = Math.round((c.score / maxScore) * 120);
+    tr.innerHTML = `
+      <td>${c.bpm.toFixed(1)}</td>
+      <td>${c.corr.toFixed(3)}</td>
+      <td>${c.hsum.toFixed(3)}</td>
+      <td>${c.osup.toFixed(3)}</td>
+      <td>${c.prior.toFixed(3)}</td>
+      <td>${c.score.toFixed(3)}</td>
+      <td><div class="bar-cell"><div class="mini-bar" style="width:${barW}px"></div></div></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  resultsEl.classList.remove('hidden');
+  addHistory(filename, expected, bpm, effective, settings);
+}
+
+function addHistory(filename, expected, raw, effective, settings) {
+  historyEl.classList.remove('hidden');
+  const tr   = document.createElement('tr');
+  let errStr = '—', cls = '';
+  if (expected) {
+    const err = Math.abs(effective - expected) / expected * 100;
+    errStr = err.toFixed(1) + '%';
+    cls    = err <= 4 ? 'pass' : err <= 10 ? 'close' : 'fail';
+  }
+  const name = filename.length > 28 ? filename.slice(0, 25) + '…' : filename;
+  const settingNote = (settings.freqCutoff !== 1500 || settings.octaveW !== 3.0)
+    ? ` [cut=${settings.freqCutoff} oct=${settings.octaveW}]` : '';
+  tr.innerHTML = `
+    <td>${name}${settingNote}</td>
+    <td>${expected || '—'}</td>
+    <td>${raw.toFixed(1)}</td>
+    <td>${effective.toFixed(1)}</td>
+    <td class="${cls}">${errStr}</td>
+    <td class="${cls}">${cls ? cls.toUpperCase() : '—'}</td>
+  `;
+  document.getElementById('history-body').prepend(tr);
+}
+</script>
+</body>
+</html>
